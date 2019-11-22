@@ -11,7 +11,6 @@ import (
 	"github.com/mr-tron/base58"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/textileio/go-textile-core/crypto/symmetric"
-	es "github.com/textileio/go-textile-threads/eventstore"
 )
 
 func parseInviteLink(inviteLink string) (ma.Multiaddr, *symmetric.Key, *symmetric.Key) {
@@ -39,27 +38,6 @@ func parseInviteLink(inviteLink string) (ma.Multiaddr, *symmetric.Key, *symmetri
 		panic("can't create read symkey")
 	}
 	return addr, fkey, rkey
-}
-
-func generateInviteLink(store *es.Store) (string, error) {
-	host := store.Threadservice().Host()
-	tid, _, err := store.ThreadID()
-	if err != nil {
-		return "", err
-	}
-	tinfo, err := store.Threadservice().Store().ThreadInfo(tid)
-	if err != nil {
-		return "", err
-	}
-
-	id, _ := ma.NewComponent("p2p", host.ID().String())
-	thread, _ := ma.NewComponent("thread", tid.String())
-
-	addr := host.Addrs()[0].Encapsulate(id).Encapsulate(thread).String()
-	fKey := base58.Encode(tinfo.FollowKey.Bytes())
-	rKey := base58.Encode(tinfo.ReadKey.Bytes())
-
-	return addr + "?" + fKey + "&" + rKey, nil
 }
 
 func createIPFSLite(ctx context.Context) (*ipfslite.Peer, error) {

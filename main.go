@@ -35,11 +35,15 @@ func main() {
 
 	log.Info("Starting client...")
 	if *inviteLink == "" {
-		link, err := client.Start()
+		err := client.Start()
 		if err != nil {
 			log.Fatalf("error when starting peer without invitation: %v", err)
 		}
-		log.Infof("Invitation link: %s", link)
+		invLink, err := client.InviteLink()
+		if err != nil {
+			log.Fatalf("error when generating invitation link: %v", err)
+		}
+		log.Infof("Invitation link: %s", invLink)
 	} else {
 		if err := client.StartFromInvitation(*inviteLink); err != nil {
 			log.Fatalf("error when starting peer from invitation: %v", err)

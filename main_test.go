@@ -26,7 +26,9 @@ func TestSingleUser(t *testing.T) {
 	c1, clean1 := createClient(t, "user1")
 	defer clean1()
 	defer c1.Close()
-	invlink, err := c1.Start()
+	err := c1.Start()
+	checkErr(t, err)
+	invlink, err := c1.InviteLink()
 	checkErr(t, err)
 
 	if invlink == "" {
@@ -63,58 +65,63 @@ func TestSingleUser(t *testing.T) {
 	}
 }
 
-func TestTwoUserBootstrap(t *testing.T) {
+func TestNUsersBootstrap(t *testing.T) {
 	t.Parallel()
-	c1, clean1 := createClient(t, "user1")
-	defer clean1()
-	defer c1.Close()
-	invlink, err := c1.Start()
-	checkErr(t, err)
 
-	time.Sleep(time.Second * 1)
-
-	c2, clean2 := createClient(t, "user2")
-	defer clean2()
-	defer c2.Close()
-	checkErr(t, c2.StartFromInvitation(invlink))
-
-	time.Sleep(time.Second * 2)
-
-	tree1, err := c1.GetDirectoryTree()
-	checkErr(t, err)
-	tree2, err := c2.GetDirectoryTree()
-	checkErr(t, err)
-
-	if !EqualTrees(2, tree1, tree2) {
-		t.Fatalf("trees from users aren't equal")
+	tests := []struct {
+		totalClients   int
+		totalCorePeers int
+		syncTimeout    time.Duration
+	}{
+		{totalClients: 2, totalCorePeers: 1, syncTimeout: time.Second * 3},
+		{totalClients: 5, totalCorePeers: 1, syncTimeout: time.Second * 5},
+		{totalClients: 10, totalCorePeers: 1, syncTimeout: time.Second * 10},
+		{totalClients: 10, totalCorePeers: 3, syncTimeout: time.Second * 10},
+		{totalClients: 25, totalCorePeers: 5, syncTimeout: time.Second * 20},
 	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(fmt.Sprintf("Total%dCore%d", tt.totalClients, tt.totalCorePeers), func(t *testing.T) {
+			t.Parallel()
+			var clients []*Client
+
+			for i := 0; i < tt.totalClients; i++ {
+				c, clean := createClient(t, fmt.Sprintf("user%d", i))
+				defer clean()
+				defer c.Close()
+				clients = append(clients, c)
+			}
+			err := clients[0].Start()
+			checkErr(t, err)
+			invlink0, err := clients[0].InviteLink()
+			checkErr(t, err)
+			for i := 1; i < tt.totalCorePeers; i++ {
+				checkErr(t, clients[i].StartFromInvitation(invlink0))
+			}
+
+			for i := tt.totalCorePeers; i < tt.totalClients; i++ {
+				rotatedInvLink, err := clients[i%tt.totalCorePeers].InviteLink()
+				checkErr(t, err)
+				checkErr(t, clients[i].StartFromInvitation(rotatedInvLink))
+
+			}
+			time.Sleep(tt.syncTimeout)
+
+			assertClientsEqualTrees(t, clients)
+		})
+	}
+
 }
 
-func TestNUserBootstrap(t *testing.T) {
-	t.Parallel()
-	totalClients := 5
-
-	c1, clean1 := createClient(t, "user0")
-	defer clean1()
-	defer c1.Close()
-	invlink, err := c1.Start()
-	checkErr(t, err)
-
-	clients := []*Client{c1}
-	for i := 1; i <= totalClients-1; i++ {
-		c2, clean2 := createClient(t, fmt.Sprintf("user%d", i))
-		defer clean2()
-		defer c2.Close()
-		checkErr(t, c2.StartFromInvitation(invlink))
-		clients = append(clients, c2)
-	}
-	time.Sleep(time.Second * 10)
+func assertClientsEqualTrees(t *testing.T, clients []*Client) {
+	totalClients := len(clients)
 	dtrees := make([][]*sharedFolder, totalClients)
 	for i := range clients {
-		dtrees[i], err = clients[i].GetDirectoryTree()
+		tree, err := clients[i].GetDirectoryTree()
 		checkErr(t, err)
+		dtrees[i] = tree
 	}
-
 	if !EqualTrees(totalClients, dtrees...) {
 		for i := range dtrees {
 			printTree(i, dtrees[i])
@@ -213,8 +220,8 @@ func createClient(t *testing.T, name string) (*Client, func()) {
 	client, err := NewClient(name, shrFolder, repoPath)
 	checkErr(t, err)
 	return client, func() {
-		defer os.RemoveAll(shrFolder)
-		defer os.RemoveAll(repoPath)
+		os.RemoveAll(shrFolder)
+		os.RemoveAll(repoPath)
 	}
 }
 

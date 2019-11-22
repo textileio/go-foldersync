@@ -11,6 +11,8 @@ import (
 	ipfslite "github.com/hsanjuan/ipfs-lite"
 	"github.com/ipfs/go-cid"
 	"github.com/jsign/threads-fw/watcher"
+	"github.com/mr-tron/base58"
+	ma "github.com/multiformats/go-multiaddr"
 	core "github.com/textileio/go-textile-core/store"
 	es "github.com/textileio/go-textile-threads/eventstore"
 )
@@ -40,14 +42,6 @@ type file struct {
 
 	IsDirectory bool
 	Files       []file
-}
-
-func (c *Client) Close() error {
-	c.store.Close()
-	c.watcher.Close()
-	c.cancel()
-
-	return nil
 }
 
 func NewClient(name, sharedFolderPath, repoPath string) (*Client, error) {
@@ -90,21 +84,12 @@ func NewClient(name, sharedFolderPath, repoPath string) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) Start() (string, error) {
+func (c *Client) Start() error {
 	log.Info("Starting a new thread for shared folders")
 	if err := c.store.Start(); err != nil {
-		return "", err
+		return err
 	}
-	inviteLink, err := generateInviteLink(c.store)
-	if err != nil {
-		return "", err
-	}
-
-	if err = c.bootstrap(); err != nil {
-		return "", err
-	}
-
-	return inviteLink, nil
+	return c.bootstrap()
 }
 
 func (c *Client) StartFromInvitation(link string) error {
@@ -115,24 +100,6 @@ func (c *Client) StartFromInvitation(link string) error {
 	}
 
 	return c.bootstrap()
-}
-
-func (c *Client) bootstrap() error {
-	myFolderPath := path.Join(c.sharedFolderPath, c.name)
-	myFolder, err := getOrCreateMyFolderInstance(c.model, myFolderPath, c.name)
-	if err != nil {
-		return fmt.Errorf("error when getting client folder instance: %v", err)
-	}
-
-	w, err := watcher.New(myFolderPath, c.onCreate)
-	if err != nil {
-		return fmt.Errorf("error when creating folder watcher: %v", err)
-	}
-	w.Watch()
-
-	c.watcher = w
-	c.myFolder = myFolder
-	return nil
 }
 
 func (c *Client) Listen() *es.StateChangeListener {
@@ -146,6 +113,52 @@ func (c *Client) GetDirectoryTree() ([]*sharedFolder, error) {
 
 	}
 	return res, nil
+}
+
+func (c *Client) InviteLink() (string, error) {
+	host := c.store.Threadservice().Host()
+	tid, _, err := c.store.ThreadID()
+	if err != nil {
+		return "", err
+	}
+	tinfo, err := c.store.Threadservice().Store().ThreadInfo(tid)
+	if err != nil {
+		return "", err
+	}
+
+	id, _ := ma.NewComponent("p2p", host.ID().String())
+	thread, _ := ma.NewComponent("thread", tid.String())
+
+	addr := host.Addrs()[0].Encapsulate(id).Encapsulate(thread).String()
+	fKey := base58.Encode(tinfo.FollowKey.Bytes())
+	rKey := base58.Encode(tinfo.ReadKey.Bytes())
+
+	return addr + "?" + fKey + "&" + rKey, nil
+}
+
+func (c *Client) Close() error {
+	c.watcher.Close()
+	c.cancel()
+	c.store.Close()
+
+	return nil
+}
+
+func (c *Client) bootstrap() error {
+	myFolderPath := path.Join(c.sharedFolderPath, c.name)
+	myFolder, err := c.getOrCreateMyFolderInstance(myFolderPath)
+	if err != nil {
+		return fmt.Errorf("error when getting client folder instance: %v", err)
+	}
+	c.myFolder = myFolder
+
+	c.watcher, err = watcher.New(myFolderPath, c.onCreate)
+	if err != nil {
+		return fmt.Errorf("error when creating folder watcher: %v", err)
+	}
+	c.watcher.Watch()
+
+	return nil
 }
 
 func (c *Client) ensureFiles() error {
@@ -185,33 +198,6 @@ func (c *Client) ensureCID(owner, name, cidStr string) error {
 	return nil
 }
 
-func getOrCreateMyFolderInstance(m *es.Model, myFolderPath, name string) (*sharedFolder, error) {
-	if _, err := os.Stat(myFolderPath); os.IsNotExist(err) {
-		if err = os.MkdirAll(myFolderPath, os.ModePerm); err != nil {
-			return nil, err
-		}
-	}
-
-	var res []*sharedFolder
-	if err := m.Find(&res, es.Where("Owner").Eq(name)); err != nil {
-		return nil, err
-	}
-
-	var myFolder *sharedFolder
-	if len(res) == 0 {
-		ownFolder := &sharedFolder{Owner: name, Files: []file{}}
-		if err := m.Create(ownFolder); err != nil {
-			return nil, err
-		}
-		myFolder = ownFolder
-		// fmt.Printf("####### I %s have entityid %s\n", name, ownFolder.ID.String())
-	} else {
-		myFolder = res[0]
-	}
-
-	return myFolder, nil
-}
-
 func (c *Client) onCreate(fileName string) error {
 	f, err := os.Open(fileName)
 	if err != nil {
@@ -225,4 +211,30 @@ func (c *Client) onCreate(fileName string) error {
 	c.myFolder.Files = append(c.myFolder.Files, newFile)
 	return c.model.Save(c.myFolder)
 
+}
+
+func (c *Client) getOrCreateMyFolderInstance(path string) (*sharedFolder, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err = os.MkdirAll(path, os.ModePerm); err != nil {
+			return nil, err
+		}
+	}
+
+	var res []*sharedFolder
+	if err := c.model.Find(&res, es.Where("Owner").Eq(c.name)); err != nil {
+		return nil, err
+	}
+
+	var myFolder *sharedFolder
+	if len(res) == 0 {
+		ownFolder := &sharedFolder{Owner: c.name, Files: []file{}}
+		if err := c.model.Create(ownFolder); err != nil {
+			return nil, err
+		}
+		myFolder = ownFolder
+	} else {
+		myFolder = res[0]
+	}
+
+	return myFolder, nil
 }
