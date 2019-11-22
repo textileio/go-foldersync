@@ -532,6 +532,8 @@ github.com/textileio/go-textile-threads v0.0.0-20191115185013-a4f717c8307f h1:go
 github.com/textileio/go-textile-threads v0.0.0-20191115185013-a4f717c8307f/go.mod h1:pv/bGsT4/PJULvkkBxBHeoD8v019y8vIZL08pTUtDAo=
 github.com/textileio/go-textile-threads v0.0.0-20191120233028-2d227e65ef91 h1:au9Z9TsnrFlaS0LS0Ms1ql561l1c362q0V0Me9CWe1U=
 github.com/textileio/go-textile-threads v0.0.0-20191120233028-2d227e65ef91/go.mod h1:78fxxWeiHNVPke6t1CgqY3EaYcz3NPUJDVy846Q2KbA=
+github.com/textileio/go-textile-threads v0.0.0-20191122122106-96babeeb6b52 h1:y8NtPfGaFjuWNumwUeBSOl9ROzkpwNz484rwCYqyC5Q=
+github.com/textileio/go-textile-threads v0.0.0-20191122122106-96babeeb6b52/go.mod h1:SZtSRbmO8gtQXO2gQpoWtpYGg/CZH3JznE3gQYHnxBs=
 github.com/ugorji/go/codec v0.0.0-20181204163529-d75b2dcb6bc8/go.mod h1:VFNgLljTbGfSG7qAOspJ7OScBnGdDN/yBr0sguwnwf0=
 github.com/warpfork/go-wish v0.0.0-20180510122957-5ad1f5abf436/go.mod h1:x6AKhvSSexNrVSrViXSHUEbICjmGXhtgABaHIySUSGw=
 github.com/warpfork/go-wish v0.0.0-20190328234359-8b3e70f8e830 h1:8kxMKmKzXXL4Ru1nyhvdms/JjWt+3YLpvRb/bAjO/y0=
