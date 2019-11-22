@@ -22,11 +22,9 @@ require (
 	github.com/multiformats/go-multiaddr v0.1.1
 	github.com/textileio/go-eventstore v0.0.0-20191106220529-2723bb6c7c79
 	github.com/textileio/go-textile-core v0.0.0-20191119181245-af71494bbb10
-	github.com/textileio/go-textile-threads v0.0.0-20191120233028-2d227e65ef91
+	github.com/textileio/go-textile-threads v0.0.0-20191122122106-96babeeb6b52
 	github.com/whyrusleeping/go-logging v0.0.0-20170515211332-0457bb6b88fc
 	golang.org/x/sys v0.0.0-20191113165036-4c7a9d0fe056 // indirect
 	google.golang.org/api v0.14.0 // indirect
 	gopkg.in/src-d/go-log.v1 v1.0.1
 )
-
-replace github.com/textileio/go-textile-threads v0.0.0-20191120233028-2d227e65ef91 => ../go-textile-threads
