@@ -164,25 +164,30 @@ func (c *Client) GetDirectoryTree() ([]*userFolder, error) {
 	return res, nil
 }
 
-func (c *Client) InviteLink() (string, error) {
+func (c *Client) InviteLinks() ([]string, error) {
 	host := c.store.Threadservice().Host()
 	tid, _, err := c.store.ThreadID()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	tinfo, err := c.store.Threadservice().Store().ThreadInfo(tid)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	id, _ := ma.NewComponent("p2p", host.ID().String())
 	thread, _ := ma.NewComponent("thread", tid.String())
 
-	addr := host.Addrs()[0].Encapsulate(id).Encapsulate(thread).String()
-	fKey := base58.Encode(tinfo.FollowKey.Bytes())
-	rKey := base58.Encode(tinfo.ReadKey.Bytes())
+	addrs := host.Addrs()
+	res := make([]string, len(addrs))
+	for i := range addrs {
+		addr := addrs[i].Encapsulate(id).Encapsulate(thread).String()
+		fKey := base58.Encode(tinfo.FollowKey.Bytes())
+		rKey := base58.Encode(tinfo.ReadKey.Bytes())
 
-	return addr + "?" + fKey + "&" + rKey, nil
+		res[i] = addr + "?" + fKey + "&" + rKey
+	}
+	return res, nil
 }
 
 func (c *Client) FullPath(f file) string {
@@ -235,6 +240,7 @@ func (c *Client) startFileSystemWatcher() error {
 		}
 
 		fileRelPath := strings.TrimPrefix(fileName, c.shrFolderPath)
+		fileRelPath = strings.TrimLeft(fileRelPath, "/")
 		newFile := file{ID: uuid.New().String(), FileRelativePath: fileRelPath, CID: n.Cid().String(), Files: []file{}}
 		c.folderInstance.Files = append(c.folderInstance.Files, newFile)
 		return c.model.Save(c.folderInstance)

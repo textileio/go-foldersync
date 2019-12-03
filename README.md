@@ -47,11 +47,12 @@ network.
 
 ## Usage
 When a peer wants to bootstrap a new shared folder, to invite others, it has to 
-run: `go run *.go -name bob`. This will create a new `Store` with an underlying 
-new `Thread`, and will print an invitation link that other peers can use to 
-join the shared folder.
+run: `go run main.go util.go client.go -name bob`. This will create a new 
+`Store` with an underlying new `Thread`, and will print an invitation link that 
+other peers can use to join the shared folder.
 
-Joining peers will run: `go run *.go -user alice -inviteLink xxxxxxx` to join 
+Joining peers will run: 
+`go run main.go util.go client.go -user alice -inviteLink xxxxxxx` to join 
 the shared folder. The invite link has format: 
 `<thread-addr>?<follow-key>&<read-key>`.
 

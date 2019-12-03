@@ -30,8 +30,9 @@ func TestSingleUser(t *testing.T) {
 	defer c1.Close()
 	err := c1.Start()
 	checkErr(t, err)
-	invlink, err := c1.InviteLink()
+	invlinks, err := c1.InviteLinks()
 	checkErr(t, err)
+	invlink := invlinks[0]
 
 	if invlink == "" {
 		t.Fatalf("invite link can't be empty")
@@ -62,7 +63,7 @@ func TestSingleUser(t *testing.T) {
 		t.Fatalf("there should be one user folder")
 	}
 	tree = trees[0]
-	if len(tree.Files) != 1 || tree.Files[0].FileRelativePath != tmpFilePath {
+	if len(tree.Files) != 1 || tree.Files[0].FileRelativePath != "user1/test.txt" {
 		t.Fatalf("invalid tree state")
 	}
 }
@@ -78,13 +79,13 @@ func TestNUsersBootstrap(t *testing.T) {
 		randFileSize     int
 		checkSyncedFiles bool
 	}{
-		// {totalClients: 2, totalCorePeers: 1, syncTimeout: time.Second * 3},
-		// {totalClients: 5, totalCorePeers: 1, syncTimeout: time.Second * 5},
+		{totalClients: 2, totalCorePeers: 1, syncTimeout: time.Second * 5},
+		{totalClients: 5, totalCorePeers: 1, syncTimeout: time.Second * 15},
 
-		// {totalClients: 5, totalCorePeers: 2, syncTimeout: time.Second * 20},
+		{totalClients: 5, totalCorePeers: 2, syncTimeout: time.Second * 20},
 
 		{totalClients: 2, totalCorePeers: 1, syncTimeout: time.Second * 10, randFilesGen: 4, randFileSize: 10},
-		// {totalClients: 5, totalCorePeers: 4, syncTimeout: time.Second * 30, randFilesGen: 4, randFileSize: 10},
+		{totalClients: 5, totalCorePeers: 4, syncTimeout: time.Second * 20, randFilesGen: 4, randFileSize: 10},
 	}
 
 	for _, tt := range tests {
@@ -100,14 +101,16 @@ func TestNUsersBootstrap(t *testing.T) {
 			}
 			err := clients[0].Start()
 			checkErr(t, err)
-			invlink0, err := clients[0].InviteLink()
+			invlink0s, err := clients[0].InviteLinks()
 			checkErr(t, err)
+			invlink0 := invlink0s[0]
 			for i := 1; i < tt.totalCorePeers; i++ {
 				checkErr(t, clients[i].StartFromInvitation(invlink0))
 			}
 
 			for i := tt.totalCorePeers; i < tt.totalClients; i++ {
-				rotatedInvLink, err := clients[i%tt.totalCorePeers].InviteLink()
+				rotatedInvLinks, err := clients[i%tt.totalCorePeers].InviteLinks()
+				rotatedInvLink := rotatedInvLinks[0]
 				checkErr(t, err)
 				checkErr(t, clients[i].StartFromInvitation(rotatedInvLink))
 			}

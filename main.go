@@ -39,11 +39,13 @@ func main() {
 		if err != nil {
 			log.Fatalf("error when starting peer without invitation: %v", err)
 		}
-		invLink, err := client.InviteLink()
+		invLinks, err := client.InviteLinks()
 		if err != nil {
 			log.Fatalf("error when generating invitation link: %v", err)
 		}
-		log.Infof("Invitation link: %s", invLink)
+		for i := range invLinks {
+			log.Infof("Invitation link: %s", invLinks[i])
+		}
 	} else {
 		if err := client.StartFromInvitation(*inviteLink); err != nil {
 			log.Fatalf("error when starting peer from invitation: %v", err)
@@ -51,29 +53,10 @@ func main() {
 	}
 	log.Infof("Client started!")
 
-	// ctx, cancel := context.WithCancel(context.Background())
-	// defer cancel()
-	// var wg sync.WaitGroup
-	// wg.Add(1)
-	// l := client.Listen()
-	// go func() {
-	// 	defer wg.Done()
-	// 	for {
-	// 		select {
-	// 		case <-ctx.Done():
-	// 			return
-	// 		case <-l.Channel():
-	// 			c.PrintFolderTree()
-	// 		}
-	// 	}
-	// }()
-
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
 	log.Info("Closing...")
-	// cancel()
-	// wg.Wait()
 	if err = client.Close(); err != nil {
 		log.Fatalf("error when closing the client: %v", err)
 	}
