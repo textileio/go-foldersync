@@ -31,7 +31,7 @@ type file struct {
 In summary, each folder is represented by a `userFolder` which is owned by a 
 user. This folder has a list of `file` which has file metadata such as:
 - A unique uuid
-- A relative path from the root of the shared folder: `userXXX/file.txt'
+- A relative path from the root of the shared folder: `userXXX/file.txt`
 - The CID of the file, which can be fetched *out-of-band* with IPFS Lite.
 
 The original intention is to allow arbitrary nested folders and files, but 
