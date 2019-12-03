@@ -121,7 +121,7 @@ func (c *Client) Start() error {
 		return ErrClientAlreadyStarted
 	}
 
-	log.Info("Starting a new thread for shared folders")
+	log.Info("Starting/resuming a new thread for shared folders")
 	if err := c.store.Start(); err != nil {
 		return err
 	}
