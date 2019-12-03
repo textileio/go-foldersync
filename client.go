@@ -1,0 +1,335 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	ipfslite "github.com/hsanjuan/ipfs-lite"
+	"github.com/ipfs/go-cid"
+	"github.com/jsign/threads-fw/watcher"
+	"github.com/mr-tron/base58"
+	ma "github.com/multiformats/go-multiaddr"
+	core "github.com/textileio/go-textile-core/store"
+	es "github.com/textileio/go-textile-threads/eventstore"
+)
+
+var (
+	ErrClientAlreadyStarted = errors.New("client already started")
+)
+
+type Client struct {
+	lock          sync.Mutex
+	closeIpfsLite func() error
+	wg            sync.WaitGroup
+	close         chan struct{}
+	started       bool
+	closed        bool
+
+	shrFolderPath  string
+	userName       string
+	folderInstance *userFolder
+
+	ts    es.ThreadserviceBoostrapper
+	store *es.Store
+	model *es.Model
+	peer  *ipfslite.Peer
+}
+
+type userFolder struct {
+	ID    core.EntityID
+	Owner string
+	Files []file
+}
+
+type file struct {
+	ID               string
+	FileRelativePath string
+	CID              string
+
+	IsDirectory bool
+	Files       []file
+}
+
+func NewClient(name, sharedFolderPath, repoPath string) (*Client, error) {
+	ts, err := es.DefaultThreadservice(repoPath, es.ListenPort(0), es.ProxyPort(0))
+	if err != nil {
+		return nil, err
+	}
+
+	s, err := es.NewStore(ts, es.WithRepoPath(repoPath))
+	if err != nil {
+		return nil, fmt.Errorf("error when creating store: %v", err)
+	}
+
+	m, err := s.Register("shardFolder", &userFolder{})
+	if err != nil {
+		return nil, fmt.Errorf("error when registering model: %v", err)
+	}
+
+	//ipfspeer, closeIpfsLite, err := createIPFSLite(ts.Host())
+	ipfspeer := ts.GetIpfsLite()
+	if err != nil {
+		return nil, fmt.Errorf("error when creating ipfs lite peer: %v", err)
+	}
+
+	return &Client{
+		closeIpfsLite: func() error { return nil },
+		close:         make(chan struct{}),
+		ts:            ts,
+		store:         s,
+		model:         m,
+		peer:          ipfspeer,
+		shrFolderPath: sharedFolderPath,
+		userName:      name,
+	}, nil
+}
+
+func (c *Client) Close() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.closed {
+		return nil
+	}
+	c.closed = true
+
+	close(c.close)
+	c.wg.Wait()
+	if err := c.closeIpfsLite(); err != nil {
+		return err
+	}
+	c.store.Close()
+	if err := c.ts.Close(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) Start() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.started {
+		return ErrClientAlreadyStarted
+	}
+
+	log.Info("Starting a new thread for shared folders")
+	if err := c.store.Start(); err != nil {
+		return err
+	}
+	if err := c.start(); err != nil {
+		return err
+	}
+	c.started = true
+	return nil
+}
+
+func (c *Client) StartFromInvitation(link string) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.started {
+		return ErrClientAlreadyStarted
+	}
+	addr, fk, rk := parseInviteLink(link)
+	log.Infof("Starting from addr: %s", addr)
+	if err := c.store.StartFromAddr(addr, fk, rk); err != nil {
+		return err
+	}
+
+	if err := c.start(); err != nil {
+		return err
+	}
+	c.started = true
+	return nil
+}
+
+func (c *Client) Listen() *es.StateChangeListener {
+	return c.store.StateChangeListen()
+}
+
+func (c *Client) GetDirectoryTree() ([]*userFolder, error) {
+	var res []*userFolder
+	if err := c.model.Find(&res, nil); err != nil {
+		return nil, err
+
+	}
+	return res, nil
+}
+
+func (c *Client) InviteLink() (string, error) {
+	host := c.store.Threadservice().Host()
+	tid, _, err := c.store.ThreadID()
+	if err != nil {
+		return "", err
+	}
+	tinfo, err := c.store.Threadservice().Store().ThreadInfo(tid)
+	if err != nil {
+		return "", err
+	}
+
+	id, _ := ma.NewComponent("p2p", host.ID().String())
+	thread, _ := ma.NewComponent("thread", tid.String())
+
+	addr := host.Addrs()[0].Encapsulate(id).Encapsulate(thread).String()
+	fKey := base58.Encode(tinfo.FollowKey.Bytes())
+	rKey := base58.Encode(tinfo.ReadKey.Bytes())
+
+	return addr + "?" + fKey + "&" + rKey, nil
+}
+
+func (c *Client) FullPath(f file) string {
+	return filepath.Join(c.shrFolderPath, f.FileRelativePath)
+}
+
+func (c *Client) start() error {
+	c.wg.Add(2)
+	c.startFileSystemWatcher()
+	c.startListeningExternalChanges()
+
+	return nil
+}
+
+func (c *Client) startListeningExternalChanges() {
+	go func() {
+		defer c.wg.Done()
+		storeListener := c.store.StateChangeListen()
+		defer storeListener.Discard()
+		for {
+			select {
+			case <-c.close:
+				log.Info("shutting down external changes listener")
+				return
+			case <-storeListener.Channel():
+				if err := c.ensureFiles(); err != nil {
+					log.Warningf("error when ensuring files: %v", err)
+				}
+			}
+		}
+	}()
+}
+
+func (c *Client) startFileSystemWatcher() error {
+	myFolderPath := path.Join(c.shrFolderPath, c.userName)
+	myFolder, err := c.getOrCreateMyFolderInstance(myFolderPath)
+	if err != nil {
+		return fmt.Errorf("error when getting client folder instance: %v", err)
+	}
+	c.folderInstance = myFolder
+
+	watcher, err := watcher.New(myFolderPath, func(fileName string) error {
+		f, err := os.Open(fileName)
+		if err != nil {
+			return err
+		}
+		n, err := c.peer.AddFile(context.Background(), f, nil)
+		if err != nil {
+			return err
+		}
+
+		fileRelPath := strings.TrimPrefix(fileName, c.shrFolderPath)
+		newFile := file{ID: uuid.New().String(), FileRelativePath: fileRelPath, CID: n.Cid().String(), Files: []file{}}
+		c.folderInstance.Files = append(c.folderInstance.Files, newFile)
+		return c.model.Save(c.folderInstance)
+	})
+
+	if err != nil {
+		return fmt.Errorf("error when creating folder watcher: %v", err)
+	}
+	watcher.Watch()
+	go func() {
+		<-c.close
+		watcher.Close()
+		c.wg.Done()
+	}()
+	return nil
+}
+
+func (c *Client) ensureFiles() error {
+	res, err := c.GetDirectoryTree()
+	if err != nil {
+		return err
+	}
+	var wg sync.WaitGroup
+	for _, userFolder := range res {
+		for _, f := range userFolder.Files {
+			if err := c.ensureCID(c.FullPath(f), f.CID); err != nil {
+				log.Errorf("%s: error ensuring file %s: %v", c.userName, c.FullPath(f), err)
+			}
+		}
+	}
+	wg.Wait()
+	return nil
+}
+
+func (c *Client) ensureCID(fullPath, cidStr string) error {
+	cid, err := cid.Decode(cidStr)
+	if err != nil {
+		return err
+	}
+	_, err = os.Stat(fullPath)
+	if err == nil {
+		return nil
+	}
+	if !os.IsNotExist(err) {
+		return err
+	}
+
+	log.Infof("Fetching file %s", fullPath)
+	d1 := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	str, err := c.peer.GetFile(ctx, cid)
+	if err != nil {
+		return err
+	}
+	defer str.Close()
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0660)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err = io.Copy(f, str); err != nil {
+		return err
+	}
+	d2 := time.Now()
+	d := d2.Sub(d1)
+	log.Infof("Done fetching %s in %dms", fullPath, d.Milliseconds())
+	return nil
+}
+
+func (c *Client) getOrCreateMyFolderInstance(path string) (*userFolder, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err = os.MkdirAll(path, os.ModePerm); err != nil {
+			return nil, err
+		}
+	}
+
+	var res []*userFolder
+	if err := c.model.Find(&res, es.Where("Owner").Eq(c.userName)); err != nil {
+		return nil, err
+	}
+
+	var myFolder *userFolder
+	if len(res) == 0 {
+		ownFolder := &userFolder{Owner: c.userName, Files: []file{}}
+		if err := c.model.Create(ownFolder); err != nil {
+			return nil, err
+		}
+		myFolder = ownFolder
+	} else {
+		myFolder = res[0]
+	}
+
+	return myFolder, nil
+}
