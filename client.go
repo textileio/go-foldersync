@@ -151,10 +151,6 @@ func (c *Client) StartFromInvitation(link string) error {
 	return nil
 }
 
-func (c *Client) Listen() *es.StateChangeListener {
-	return c.store.StateChangeListen()
-}
-
 func (c *Client) GetDirectoryTree() ([]*userFolder, error) {
 	var res []*userFolder
 	if err := c.model.Find(&res, nil); err != nil {
@@ -202,23 +198,35 @@ func (c *Client) start() error {
 	return nil
 }
 
-func (c *Client) startListeningExternalChanges() {
+func (c *Client) startListeningExternalChanges() error {
+	l, err := c.store.Listen()
+	if err != nil {
+		return err
+	}
 	go func() {
 		defer c.wg.Done()
-		storeListener := c.store.StateChangeListen()
-		defer storeListener.Discard()
+		defer l.Close()
 		for {
 			select {
 			case <-c.close:
 				log.Info("shutting down external changes listener")
 				return
-			case <-storeListener.Channel():
-				if err := c.ensureFiles(); err != nil {
-					log.Warningf("error when ensuring files: %v", err)
+			case a := <-l.Channel():
+				var uf userFolder
+				if err := c.model.FindByID(a.ID, &uf); err != nil {
+					log.Errorf("error when getting changed user folder with ID %s", a.ID)
+					continue
+				}
+				log.Errorf("%s: detected new file %s of user %s", c.userName, a.ID, uf.Owner)
+				for _, f := range uf.Files {
+					if err := c.ensureCID(c.FullPath(f), f.CID); err != nil {
+						log.Warningf("%s: error ensuring file %s: %v", c.userName, c.FullPath(f), err)
+					}
 				}
 			}
 		}
 	}()
+	return nil
 }
 
 func (c *Client) startFileSystemWatcher() error {

@@ -14,8 +14,8 @@ require (
 	github.com/mr-tron/base58 v1.1.2
 	github.com/multiformats/go-multiaddr v0.1.1
 	github.com/smartystreets/goconvey v0.0.0-20190710185942-9d28bd7c0945 // indirect
-	github.com/textileio/go-textile-core v0.0.0-20191119181245-af71494bbb10
-	github.com/textileio/go-textile-threads v0.0.0-20191202223154-9deb080fa443
+	github.com/textileio/go-textile-core v0.0.0-20191205110409-5785e1750a85
+	github.com/textileio/go-textile-threads v0.0.0-20191205112930-d2645603e66e
 	github.com/whyrusleeping/go-logging v0.0.0-20170515211332-0457bb6b88fc
 	golang.org/x/sys v0.0.0-20191113165036-4c7a9d0fe056 // indirect
 )
