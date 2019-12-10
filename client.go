@@ -217,7 +217,7 @@ func (c *Client) startListeningExternalChanges() error {
 					log.Errorf("error when getting changed user folder with ID %s", a.ID)
 					continue
 				}
-				log.Errorf("%s: detected new file %s of user %s", c.userName, a.ID, uf.Owner)
+				log.Infof("%s: detected new file %s of user %s", c.userName, a.ID, uf.Owner)
 				for _, f := range uf.Files {
 					if err := c.ensureCID(c.FullPath(f), f.CID); err != nil {
 						log.Warningf("%s: error ensuring file %s: %v", c.userName, c.FullPath(f), err)
