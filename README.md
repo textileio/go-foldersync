@@ -52,7 +52,7 @@ run: `go run main.go util.go client.go -name bob`. This will create a new
 other peers can use to join the shared folder.
 
 Joining peers will run: 
-`go run main.go util.go client.go -user alice -inviteLink xxxxxxx` to join 
+`go run main.go util.go client.go -name alice -inviteLink xxxxxxx` to join 
 the shared folder. The invite link has format: 
 `<thread-addr>?<follow-key>&<read-key>`.
 
