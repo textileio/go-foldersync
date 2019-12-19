@@ -15,11 +15,11 @@ import (
 	"github.com/google/uuid"
 	ipfslite "github.com/hsanjuan/ipfs-lite"
 	"github.com/ipfs/go-cid"
-	"github.com/jsign/threads-fw/watcher"
 	"github.com/mr-tron/base58"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/textileio/go-foldersync/watcher"
 	core "github.com/textileio/go-textile-core/store"
-	es "github.com/textileio/go-textile-threads/eventstore"
+	es "github.com/textileio/go-threads/eventstore"
 )
 
 var (
@@ -60,7 +60,7 @@ type file struct {
 }
 
 func NewClient(name, sharedFolderPath, repoPath string) (*Client, error) {
-	ts, err := es.DefaultThreadservice(repoPath, es.ListenPort(0), es.ProxyPort(0))
+	ts, err := es.DefaultThreadservice(repoPath)
 	if err != nil {
 		return nil, err
 	}
