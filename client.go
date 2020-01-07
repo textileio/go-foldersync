@@ -17,7 +17,7 @@ import (
 	"github.com/mr-tron/base58"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/textileio/go-foldersync/watcher"
-	store "github.com/textileio/go-threads/core/store"
+	models "github.com/textileio/go-threads/core/store"
 	core "github.com/textileio/go-threads/store"
 )
 
@@ -44,13 +44,13 @@ type Client struct {
 }
 
 type userFolder struct {
-	ID    store.EntityID
+	ID    models.EntityID
 	Owner string
 	Files []file
 }
 
 type file struct {
-	ID               store.EntityID
+	ID               models.EntityID
 	FileRelativePath string
 	CID              string
 
@@ -248,7 +248,7 @@ func (c *Client) startFileSystemWatcher() error {
 
 		fileRelPath := strings.TrimPrefix(fileName, c.shrFolderPath)
 		fileRelPath = strings.TrimLeft(fileRelPath, "/")
-		newFile := file{ID: store.NewEntityID(), FileRelativePath: fileRelPath, CID: n.Cid().String(), Files: []file{}}
+		newFile := file{ID: models.NewEntityID(), FileRelativePath: fileRelPath, CID: n.Cid().String(), Files: []file{}}
 		c.folderInstance.Files = append(c.folderInstance.Files, newFile)
 		return c.model.Save(c.folderInstance)
 	})
