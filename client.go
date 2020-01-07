@@ -17,8 +17,8 @@ import (
 	"github.com/mr-tron/base58"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/textileio/go-foldersync/watcher"
-	models "github.com/textileio/go-threads/core/store"
-	core "github.com/textileio/go-threads/store"
+	core "github.com/textileio/go-threads/core/store"
+	"github.com/textileio/go-threads/store"
 )
 
 var (
@@ -37,20 +37,20 @@ type Client struct {
 	userName       string
 	folderInstance *userFolder
 
-	ts    core.ServiceBoostrapper
-	store *core.Store
-	model *core.Model
+	ts    store.ServiceBoostrapper
+	store *store.Store
+	model *store.Model
 	peer  *ipfslite.Peer
 }
 
 type userFolder struct {
-	ID    models.EntityID
+	ID    core.EntityID
 	Owner string
 	Files []file
 }
 
 type file struct {
-	ID               models.EntityID
+	ID               core.EntityID
 	FileRelativePath string
 	CID              string
 
@@ -59,12 +59,12 @@ type file struct {
 }
 
 func NewClient(name, sharedFolderPath, repoPath string) (*Client, error) {
-	ts, err := core.DefaultService(repoPath)
+	ts, err := store.DefaultService(repoPath)
 	if err != nil {
 		return nil, err
 	}
 
-	s, err := core.NewStore(ts, core.WithRepoPath(repoPath))
+	s, err := store.NewStore(ts, store.WithRepoPath(repoPath))
 	if err != nil {
 		return nil, fmt.Errorf("error when creating store: %v", err)
 	}
@@ -248,7 +248,7 @@ func (c *Client) startFileSystemWatcher() error {
 
 		fileRelPath := strings.TrimPrefix(fileName, c.shrFolderPath)
 		fileRelPath = strings.TrimLeft(fileRelPath, "/")
-		newFile := file{ID: models.NewEntityID(), FileRelativePath: fileRelPath, CID: n.Cid().String(), Files: []file{}}
+		newFile := file{ID: core.NewEntityID(), FileRelativePath: fileRelPath, CID: n.Cid().String(), Files: []file{}}
 		c.folderInstance.Files = append(c.folderInstance.Files, newFile)
 		return c.model.Save(c.folderInstance)
 	})
@@ -329,7 +329,7 @@ func (c *Client) getOrCreateMyFolderInstance(path string) (*userFolder, error) {
 	}
 
 	var res []*userFolder
-	if err := c.model.Find(&res, core.Where("Owner").Eq(c.userName)); err != nil {
+	if err := c.model.Find(&res, store.Where("Owner").Eq(c.userName)); err != nil {
 		return nil, err
 	}
 
