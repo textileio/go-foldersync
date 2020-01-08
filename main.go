@@ -7,7 +7,6 @@ import (
 	"syscall"
 
 	logging "github.com/ipfs/go-log"
-	logger "github.com/whyrusleeping/go-logging"
 )
 
 var (
@@ -23,7 +22,7 @@ func main() {
 	flag.Parse()
 
 	if *debug {
-		logging.SetAllLoggers(logger.ERROR)
+		logging.SetAllLoggers(1)
 		logging.SetLogLevel("main", "debug")
 		logging.SetLogLevel("watcher", "debug")
 	}

@@ -12,14 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	ipfslite "github.com/hsanjuan/ipfs-lite"
 	"github.com/ipfs/go-cid"
 	"github.com/mr-tron/base58"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/textileio/go-foldersync/watcher"
-	core "github.com/textileio/go-textile-core/store"
-	es "github.com/textileio/go-threads/eventstore"
+	core "github.com/textileio/go-threads/core/store"
+	"github.com/textileio/go-threads/store"
 )
 
 var (
@@ -38,9 +37,9 @@ type Client struct {
 	userName       string
 	folderInstance *userFolder
 
-	ts    es.ThreadserviceBoostrapper
-	store *es.Store
-	model *es.Model
+	ts    store.ServiceBoostrapper
+	store *store.Store
+	model *store.Model
 	peer  *ipfslite.Peer
 }
 
@@ -51,7 +50,7 @@ type userFolder struct {
 }
 
 type file struct {
-	ID               string
+	ID               core.EntityID
 	FileRelativePath string
 	CID              string
 
@@ -60,12 +59,12 @@ type file struct {
 }
 
 func NewClient(name, sharedFolderPath, repoPath string) (*Client, error) {
-	ts, err := es.DefaultThreadservice(repoPath)
+	ts, err := store.DefaultService(repoPath)
 	if err != nil {
 		return nil, err
 	}
 
-	s, err := es.NewStore(ts, es.WithRepoPath(repoPath))
+	s, err := store.NewStore(ts, store.WithRepoPath(repoPath))
 	if err != nil {
 		return nil, fmt.Errorf("error when creating store: %v", err)
 	}
@@ -161,12 +160,12 @@ func (c *Client) GetDirectoryTree() ([]*userFolder, error) {
 }
 
 func (c *Client) InviteLinks() ([]string, error) {
-	host := c.store.Threadservice().Host()
+	host := c.store.Service().Host()
 	tid, _, err := c.store.ThreadID()
 	if err != nil {
 		return nil, err
 	}
-	tinfo, err := c.store.Threadservice().Store().ThreadInfo(tid)
+	tinfo, err := c.store.Service().Store().ThreadInfo(tid)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +248,7 @@ func (c *Client) startFileSystemWatcher() error {
 
 		fileRelPath := strings.TrimPrefix(fileName, c.shrFolderPath)
 		fileRelPath = strings.TrimLeft(fileRelPath, "/")
-		newFile := file{ID: uuid.New().String(), FileRelativePath: fileRelPath, CID: n.Cid().String(), Files: []file{}}
+		newFile := file{ID: core.NewEntityID(), FileRelativePath: fileRelPath, CID: n.Cid().String(), Files: []file{}}
 		c.folderInstance.Files = append(c.folderInstance.Files, newFile)
 		return c.model.Save(c.folderInstance)
 	})
@@ -330,7 +329,7 @@ func (c *Client) getOrCreateMyFolderInstance(path string) (*userFolder, error) {
 	}
 
 	var res []*userFolder
-	if err := c.model.Find(&res, es.Where("Owner").Eq(c.userName)); err != nil {
+	if err := c.model.Find(&res, store.Where("Owner").Eq(c.userName)); err != nil {
 		return nil, err
 	}
 

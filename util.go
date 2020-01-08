@@ -11,7 +11,7 @@ import (
 	host "github.com/libp2p/go-libp2p-host"
 	"github.com/mr-tron/base58"
 	ma "github.com/multiformats/go-multiaddr"
-	"github.com/textileio/go-textile-core/crypto/symmetric"
+	"github.com/textileio/go-threads/crypto/symmetric"
 )
 
 func parseInviteLink(inviteLink string) (ma.Multiaddr, *symmetric.Key, *symmetric.Key) {
