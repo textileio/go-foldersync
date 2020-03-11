@@ -7,14 +7,14 @@ other joined peers.
 
 ## Design
 The main components of the applications are:
-- A `Store` using new Threads V2.
+- A `DB` using new Threads V2.
 - IPFS Lite to download files.
 
-The `Store` will hold all files metadata, which is a JSON document derived from 
+The `DB` will hold all files metadata, which is a JSON document derived from 
 the following structure:
 ```
 type userFolder struct {
-	ID    core.EntityID
+	ID    core.InstanceID
 	Owner string
 	Files []file
 }
@@ -48,7 +48,7 @@ network.
 ## Usage
 When a peer wants to bootstrap a new shared folder, to invite others, it has to 
 run: `go run main.go util.go client.go -name bob`. This will create a new 
-`Store` with an underlying new `Thread`, and will print an invitation link that 
+`DB` with an underlying new `Thread`, and will print an invitation link that 
 other peers can use to join the shared folder.
 
 Joining peers will run: 
@@ -58,7 +58,7 @@ the shared folder. The invite link has format:
 
 Current flags are:
 - `name`: to setup the peer name, which will be his sharedfolder name
-- `repo`: path to the repo that will hold data of `Store`
+- `repo`: path to the repo that will hold data of `DB`
 - `sharedFolder`: path to where will be the shared folder containing all peer 
 folders with their files
 - `inviteLink`: if provided is used to join an existing _sharedFolder_
@@ -77,7 +77,7 @@ possibly to avoid DoSing all joining the same peer. May also be used to
 test how this impact syncing perf.
 - How many seconds provide to the peers to sync before asserting convergence.
 
-After the sync timeout triggers, the test will assert if all `Store` of peers 
+After the sync timeout triggers, the test will assert if all `DB` of peers 
 are the same, and if all the files were fetched (that to say, each peer shared 
 folder contains all peers folders and their files).
 

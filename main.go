@@ -18,7 +18,7 @@ func main() {
 	sharedFolderPath := flag.String("folder", "sharedFolder", "path of the shared folder")
 	inviteLink := flag.String("inviteLink", "", "thread addr to join a shared folder")
 	debug := flag.Bool("debug", true, "debug mode")
-	repoPath := flag.String("repo", "repo", "path of the store repo")
+	repoPath := flag.String("repo", "repo", "path of the db repo")
 	flag.Parse()
 
 	if *debug {

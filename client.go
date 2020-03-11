@@ -17,8 +17,8 @@ import (
 	"github.com/mr-tron/base58"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/textileio/go-foldersync/watcher"
-	core "github.com/textileio/go-threads/core/store"
-	"github.com/textileio/go-threads/store"
+	core "github.com/textileio/go-threads/core/db"
+	"github.com/textileio/go-threads/db"
 )
 
 var (
@@ -37,20 +37,20 @@ type Client struct {
 	userName       string
 	folderInstance *userFolder
 
-	ts    store.ServiceBoostrapper
-	store *store.Store
-	model *store.Model
-	peer  *ipfslite.Peer
+	ts         db.ServiceBoostrapper
+	db         *db.DB
+	collection *db.Collection
+	peer       *ipfslite.Peer
 }
 
 type userFolder struct {
-	ID    core.EntityID
+	ID    core.InstanceID
 	Owner string
 	Files []file
 }
 
 type file struct {
-	ID               core.EntityID
+	ID               core.InstanceID
 	FileRelativePath string
 	CID              string
 
@@ -59,19 +59,19 @@ type file struct {
 }
 
 func NewClient(name, sharedFolderPath, repoPath string) (*Client, error) {
-	ts, err := store.DefaultService(repoPath)
+	ts, err := db.DefaultService(repoPath)
 	if err != nil {
 		return nil, err
 	}
 
-	s, err := store.NewStore(ts, store.WithRepoPath(repoPath))
+	d, err := db.NewDB(ts, db.WithRepoPath(repoPath))
 	if err != nil {
-		return nil, fmt.Errorf("error when creating store: %v", err)
+		return nil, fmt.Errorf("error when creating db: %v", err)
 	}
 
-	m, err := s.Register("shardFolder", &userFolder{})
+	c, err := d.NewCollectionFromInstance("shardFolder", &userFolder{})
 	if err != nil {
-		return nil, fmt.Errorf("error when registering model: %v", err)
+		return nil, fmt.Errorf("error when creating new collection from instance: %v", err)
 	}
 
 	//ipfspeer, closeIpfsLite, err := createIPFSLite(ts.Host())
@@ -84,8 +84,8 @@ func NewClient(name, sharedFolderPath, repoPath string) (*Client, error) {
 		closeIpfsLite: func() error { return nil },
 		close:         make(chan struct{}),
 		ts:            ts,
-		store:         s,
-		model:         m,
+		db:            d,
+		collection:    c,
 		peer:          ipfspeer,
 		shrFolderPath: sharedFolderPath,
 		userName:      name,
@@ -105,7 +105,7 @@ func (c *Client) Close() error {
 	if err := c.closeIpfsLite(); err != nil {
 		return err
 	}
-	c.store.Close()
+	c.db.Close()
 	if err := c.ts.Close(); err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func (c *Client) Start() error {
 	}
 
 	log.Info("Starting/resuming a new thread for shared folders")
-	if err := c.store.Start(); err != nil {
+	if err := c.db.Start(); err != nil {
 		return err
 	}
 	if err := c.start(); err != nil {
@@ -139,7 +139,7 @@ func (c *Client) StartFromInvitation(link string) error {
 	}
 	addr, fk, rk := parseInviteLink(link)
 	log.Infof("Starting from addr: %s", addr)
-	if err := c.store.StartFromAddr(addr, fk, rk); err != nil {
+	if err := c.db.StartFromAddr(addr, fk, rk); err != nil {
 		return err
 	}
 
@@ -152,7 +152,7 @@ func (c *Client) StartFromInvitation(link string) error {
 
 func (c *Client) GetDirectoryTree() ([]*userFolder, error) {
 	var res []*userFolder
-	if err := c.model.Find(&res, nil); err != nil {
+	if err := c.collection.Find(&res, nil); err != nil {
 		return nil, err
 
 	}
@@ -160,12 +160,12 @@ func (c *Client) GetDirectoryTree() ([]*userFolder, error) {
 }
 
 func (c *Client) InviteLinks() ([]string, error) {
-	host := c.store.Service().Host()
-	tid, _, err := c.store.ThreadID()
+	host := c.db.Service().Host()
+	tid, _, err := c.db.ThreadID()
 	if err != nil {
 		return nil, err
 	}
-	tinfo, err := c.store.Service().Store().ThreadInfo(tid)
+	tinfo, err := c.db.Service().GetThread(context.Background(), tid)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +198,7 @@ func (c *Client) start() error {
 }
 
 func (c *Client) startListeningExternalChanges() error {
-	l, err := c.store.Listen()
+	l, err := c.db.Listen()
 	if err != nil {
 		return err
 	}
@@ -212,7 +212,7 @@ func (c *Client) startListeningExternalChanges() error {
 				return
 			case a := <-l.Channel():
 				var uf userFolder
-				if err := c.model.FindByID(a.ID, &uf); err != nil {
+				if err := c.collection.FindByID(a.ID, &uf); err != nil {
 					log.Errorf("error when getting changed user folder with ID %s", a.ID)
 					continue
 				}
@@ -248,9 +248,9 @@ func (c *Client) startFileSystemWatcher() error {
 
 		fileRelPath := strings.TrimPrefix(fileName, c.shrFolderPath)
 		fileRelPath = strings.TrimLeft(fileRelPath, "/")
-		newFile := file{ID: core.NewEntityID(), FileRelativePath: fileRelPath, CID: n.Cid().String(), Files: []file{}}
+		newFile := file{ID: core.NewInstanceID(), FileRelativePath: fileRelPath, CID: n.Cid().String(), Files: []file{}}
 		c.folderInstance.Files = append(c.folderInstance.Files, newFile)
-		return c.model.Save(c.folderInstance)
+		return c.collection.Save(c.folderInstance)
 	})
 
 	if err != nil {
@@ -329,14 +329,14 @@ func (c *Client) getOrCreateMyFolderInstance(path string) (*userFolder, error) {
 	}
 
 	var res []*userFolder
-	if err := c.model.Find(&res, store.Where("Owner").Eq(c.userName)); err != nil {
+	if err := c.collection.Find(&res, db.Where("Owner").Eq(c.userName)); err != nil {
 		return nil, err
 	}
 
 	var myFolder *userFolder
 	if len(res) == 0 {
 		ownFolder := &userFolder{Owner: c.userName, Files: []file{}}
-		if err := c.model.Create(ownFolder); err != nil {
+		if err := c.collection.Create(ownFolder); err != nil {
 			return nil, err
 		}
 		myFolder = ownFolder
